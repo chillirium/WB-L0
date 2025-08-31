@@ -1,0 +1,87 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: "1"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: orders_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - app-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_CONN_STRING: postgres://user:password@postgres:5432/orders_db?sslmode=disable
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: orders
+      LOG_LEVEL: debug
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./web:/app/web
+    networks:
+      - app-network
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    depends_on:
+      - kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: orders
+    volumes:
+      - ./model.json:/app/model.json
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

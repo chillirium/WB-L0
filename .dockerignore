@@ -1,0 +1,37 @@
+# Ignore everything by default
+*
+
+# Allow only specific files and directories
+!cmd
+!internal
+!migrations
+!web
+!go.mod
+!go.sum
+!Dockerfile
+!Dockerfile.producer
+!docker-compose.yml
+!Makefile
+!.env.example
+!model.json
+
+# Exclude development and IDE files
+.git
+.gitignore
+.dockerignore
+.env
+*.log
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Exclude build artifacts
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.html
+coverage.txt
