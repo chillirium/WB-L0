@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"go-kafka-postgres/internal/cache"
 	"go-kafka-postgres/internal/db"
@@ -23,6 +24,11 @@ func New(cache cache.Cache, db db.DatabaseInterface) *Handler {
 // GetOrder обрабатывает запрос на получение заказа
 func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	uid := r.URL.Query().Get("uid")
+
+	if uid == "" {
+		uid = strings.TrimPrefix(r.URL.Path, "/order/")
+	}
+
 	if uid == "" {
 		http.Error(w, "Missing order uid", http.StatusBadRequest)
 		return
@@ -32,7 +38,6 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	if found {
 		logger.Infof("Order %s получен из кэша", uid)
 	} else {
-		// Fallback to DB
 		var err error
 		order, err = h.db.GetOrderByUID(uid)
 		if err != nil {
@@ -40,11 +45,12 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Order not found", http.StatusNotFound)
 			return
 		}
-		h.cache.Set(order) // Add to cache
+		h.cache.Set(order)
 		logger.Infof("Order %s получен из базы данных", uid)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if err := json.NewEncoder(w).Encode(order); err != nil {
 		logger.Errorf("Error encoding response: %v", err)
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)

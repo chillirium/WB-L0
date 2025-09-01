@@ -27,14 +27,14 @@ func main() {
 	}
 	defer database.Close()
 
-	cache := cache.New(42)
+	cache := cache.New(2)
 
 	orders, err := database.GetAllOrders()
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 	cache.Restore(orders)
-	logger.Infof("Restored %d orders from database", len(orders))
+	logger.Infof("Restored %d orders from database", cache.Size())
 
 	brokersEnv := os.Getenv("KAFKA_BROKERS")
 	if brokersEnv == "" {
@@ -50,8 +50,9 @@ func main() {
 
 	go consumer.Start()
 
-	handler := handler.New(cache, database)
-	http.HandleFunc("/order", handler.GetOrder)
+	hand := handler.New(cache, database)
+
+	http.HandleFunc("/order/", hand.GetOrder)
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 
 	logger.Info("Server started on :8081")

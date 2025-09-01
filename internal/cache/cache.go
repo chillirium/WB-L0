@@ -10,6 +10,7 @@ type Cache interface {
 	Get(uid string) (*model.Order, bool)
 	Set(order *model.Order)
 	Restore(orders []*model.Order)
+	Size() int
 }
 
 // lruNode узел двусвязного списка для LRU
@@ -92,7 +93,7 @@ func (c *OrderCache) Restore(orders []*model.Order) {
 	}
 }
 
-// Size возвращает размер кэша (для тестов)
+// Size возвращает размер кэша
 func (c *OrderCache) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
