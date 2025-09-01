@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DatabaseInterface определяет методы для работы с БД
 type DatabaseInterface interface {
 	InsertOrder(order *model.Order) error
 	GetAllOrders() ([]*model.Order, error)
@@ -18,20 +17,17 @@ type DatabaseInterface interface {
 	Close()
 }
 
-// Database представляет обертку вокруг пула соединений PostgreSQL
 type Database struct {
 	pool *pgxpool.Pool
 }
 
 // New создает новое подключение к базе данных
 func New(connString string) (*Database, error) {
-	// Создаем пул соединений с настройками по умолчанию
 	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
-	// Проверяем соединение с базой данных
 	if err := pool.Ping(context.Background()); err != nil {
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
@@ -48,20 +44,17 @@ func (db *Database) Close() {
 func (db *Database) InsertOrder(order *model.Order) error {
 	ctx := context.Background()
 
-	// Начинаем транзакцию для обеспечения атомарности
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction error: %w", err)
 	}
 
-	// Гарантируем откат транзакции в случае ошибки
 	defer func() {
 		if err != nil {
 			tx.Rollback(ctx)
 		}
 	}()
 
-	// 1. Вставляем основную информацию о заказе
 	orderQuery := `INSERT INTO orders (
 		order_uid, track_number, entry, locale, internal_signature,
 		customer_id, delivery_service, shardkey, sm_id, date_created, oof_shard
@@ -85,7 +78,6 @@ func (db *Database) InsertOrder(order *model.Order) error {
 		return fmt.Errorf("insert order error: %w", err)
 	}
 
-	// 2. Вставляем информацию о доставке
 	deliveryQuery := `INSERT INTO delivery (
 		order_uid, name, phone, zip, city, address, region, email
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -105,7 +97,6 @@ func (db *Database) InsertOrder(order *model.Order) error {
 		return fmt.Errorf("insert delivery error: %w", err)
 	}
 
-	// 3. Вставляем информацию об оплате
 	paymentQuery := `INSERT INTO payment (
 		order_uid, transaction, request_id, currency, provider,
 		amount, payment_dt, bank, delivery_cost, goods_total, custom_fee
@@ -129,7 +120,6 @@ func (db *Database) InsertOrder(order *model.Order) error {
 		return fmt.Errorf("insert payment error: %w", err)
 	}
 
-	// 4. Вставляем товары заказа
 	itemQuery := `INSERT INTO items (
 		order_uid, chrt_id, track_number, price, rid, name,
 		sale, size, total_price, nm_id, brand, status
@@ -164,7 +154,6 @@ func (db *Database) InsertOrder(order *model.Order) error {
 func (db *Database) GetAllOrders() ([]*model.Order, error) {
 	ctx := context.Background()
 
-	// Запрос для получения основной информации о заказах, доставке и оплате
 	query := `
 		SELECT 
 			o.order_uid, o.track_number, o.entry, o.locale, o.internal_signature,
@@ -183,7 +172,6 @@ func (db *Database) GetAllOrders() ([]*model.Order, error) {
 	}
 	defer rows.Close()
 
-	// Используем map для группировки заказов по их UID
 	ordersMap := make(map[string]*model.Order)
 	for rows.Next() {
 		var order model.Order
@@ -230,12 +218,10 @@ func (db *Database) GetAllOrders() ([]*model.Order, error) {
 		ordersMap[order.OrderUID] = &order
 	}
 
-	// Проверяем ошибки итерации
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
 
-	// Получаем товары для всех заказов
 	itemsQuery := `SELECT order_uid, chrt_id, track_number, price, rid, name, sale, size, total_price, nm_id, brand, status FROM items`
 	itemsRows, err := db.pool.Query(ctx, itemsQuery)
 	if err != nil {
@@ -243,7 +229,6 @@ func (db *Database) GetAllOrders() ([]*model.Order, error) {
 	}
 	defer itemsRows.Close()
 
-	// Добавляем товары к соответствующим заказам
 	for itemsRows.Next() {
 		var item model.Item
 		var orderUID string
@@ -272,12 +257,10 @@ func (db *Database) GetAllOrders() ([]*model.Order, error) {
 		}
 	}
 
-	// Проверяем ошибки итерации по товарам
 	if err := itemsRows.Err(); err != nil {
 		return nil, fmt.Errorf("items rows iteration error: %w", err)
 	}
 
-	// Преобразуем map в slice
 	orders := make([]*model.Order, 0, len(ordersMap))
 	for _, order := range ordersMap {
 		orders = append(orders, order)
@@ -290,7 +273,6 @@ func (db *Database) GetAllOrders() ([]*model.Order, error) {
 func (db *Database) GetOrderByUID(uid string) (*model.Order, error) {
 	ctx := context.Background()
 
-	// Запрос для получения информации о конкретном заказе
 	query := `
 		SELECT 
 			o.order_uid, o.track_number, o.entry, o.locale, o.internal_signature,
@@ -348,7 +330,6 @@ func (db *Database) GetOrderByUID(uid string) (*model.Order, error) {
 	order.Delivery = delivery
 	order.Payment = payment
 
-	// Получаем товары для этого заказа
 	itemsQuery := `SELECT chrt_id, track_number, price, rid, name, sale, size, total_price, nm_id, brand, status FROM items WHERE order_uid = $1`
 	itemsRows, err := db.pool.Query(ctx, itemsQuery, uid)
 	if err != nil {

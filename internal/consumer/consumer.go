@@ -33,7 +33,7 @@ func New(brokers []string, topic string, cache cache.Cache, db db.DatabaseInterf
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 	config.Consumer.Offsets.AutoCommit.Enable = true
 
-	groupID := "orders-consumer-group" // Можно из env
+	groupID := "orders-consumer-group"
 
 	consumer, err := sarama.NewConsumerGroup(brokers, groupID, config)
 	if err != nil {
@@ -89,24 +89,21 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		var order model.Order
 		if err := json.Unmarshal(message.Value, &order); err != nil {
 			logger.Errorf("Failed to unmarshal order: %v. Message: %s", err, string(message.Value))
-			session.MarkMessage(message, "") // Подтверждаем даже при ошибке
+			session.MarkMessage(message, "")
 			continue
 		}
 
-		// Расширенная валидация
 		if err := validateOrder(&order); err != nil {
 			logger.Errorf("Invalid order %s: %v. Skipping.", order.OrderUID, err)
 			session.MarkMessage(message, "")
 			continue
 		}
 
-		// Сохраняем в DB
 		if err := h.db.InsertOrder(&order); err != nil {
 			logger.Errorf("Failed to insert order %s into database: %v", order.OrderUID, err)
-			continue // Не подтверждаем, Kafka retry
+			continue
 		}
 
-		// Сохраняем в cache
 		h.cache.Set(&order)
 		logger.Infof("Order %s processed successfully", order.OrderUID)
 
@@ -117,14 +114,12 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 
 // Функция валидации
 func validateOrder(order *model.Order) error {
-	now := time.Now().Add(1 * time.Minute) // Буфер на задержки
+	now := time.Now().Add(1 * time.Minute)
 
-	// Проверка времени
 	if order.DateCreated.After(now) {
 		return fmt.Errorf("date_created is in the future: %v", order.DateCreated)
 	}
 
-	// Проверка пустых полей (required)
 	if order.OrderUID == "" {
 		return fmt.Errorf("missing order_uid")
 	}
@@ -150,14 +145,12 @@ func validateOrder(order *model.Order) error {
 		return fmt.Errorf("missing oof_shard")
 	}
 
-	// Delivery
 	if order.Delivery.Name == "" || order.Delivery.Phone == "" || order.Delivery.Zip == "" ||
 		order.Delivery.City == "" || order.Delivery.Address == "" || order.Delivery.Region == "" ||
 		order.Delivery.Email == "" {
 		return fmt.Errorf("missing fields in delivery")
 	}
 
-	// Payment
 	if order.Payment.Transaction == "" || order.Payment.Currency == "" || order.Payment.Provider == "" ||
 		order.Payment.Bank == "" {
 		return fmt.Errorf("missing fields in payment")
@@ -167,7 +160,6 @@ func validateOrder(order *model.Order) error {
 		return fmt.Errorf("invalid numeric values in payment")
 	}
 
-	// Items
 	if len(order.Items) == 0 {
 		return fmt.Errorf("no items")
 	}

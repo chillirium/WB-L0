@@ -45,7 +45,6 @@ func (c *OrderCache) Get(uid string) (*model.Order, bool) {
 
 	order, ok := c.orders[uid]
 	if ok {
-		// Обновляем позицию в LRU
 		c.updateLRU(uid)
 	}
 	return order, ok
@@ -58,20 +57,16 @@ func (c *OrderCache) Set(order *model.Order) {
 
 	uid := order.OrderUID
 
-	// Если элемент уже exists, обновляем его позицию в LRU
 	if _, exists := c.orders[uid]; exists {
 		c.updateLRU(uid)
 		c.orders[uid] = order
 		return
 	}
 
-	// Проверяем, не превысили ли мы максимальный размер
 	if len(c.orders) >= c.maxSize {
-		// Удаляем наименее используемый элемент
 		c.evictLRU()
 	}
 
-	// Добавляем новый элемент
 	c.orders[uid] = order
 	c.addToLRU(uid)
 }
@@ -81,19 +76,16 @@ func (c *OrderCache) Restore(orders []*model.Order) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Очищаем текущий кэш
 	c.orders = make(map[string]*model.Order)
 	c.nodeMap = make(map[string]*lruNode)
 	c.lruHead = nil
 	c.lruTail = nil
 
-	// Восстанавливаем заказы
 	for _, order := range orders {
 		uid := order.OrderUID
 		c.orders[uid] = order
 		c.addToLRU(uid)
 
-		// Если превысили maxSize, останавливаем восстановление
 		if len(c.orders) >= c.maxSize {
 			break
 		}
@@ -130,12 +122,10 @@ func (c *OrderCache) updateLRU(uid string) {
 		return
 	}
 
-	// Если элемент уже в начале, ничего не делаем
 	if node == c.lruHead {
 		return
 	}
 
-	// Удаляем элемент из текущей позиции
 	if node.prev != nil {
 		node.prev.next = node.next
 	}
@@ -143,12 +133,10 @@ func (c *OrderCache) updateLRU(uid string) {
 		node.next.prev = node.prev
 	}
 
-	// Если элемент был хвостом, обновляем хвост
 	if node == c.lruTail {
 		c.lruTail = node.prev
 	}
 
-	// Добавляем элемент в начало
 	node.prev = nil
 	node.next = c.lruHead
 	if c.lruHead != nil {
@@ -156,7 +144,6 @@ func (c *OrderCache) updateLRU(uid string) {
 	}
 	c.lruHead = node
 
-	// Обновляем хвост если необходимо
 	if c.lruTail == nil {
 		c.lruTail = node
 	}
@@ -168,18 +155,14 @@ func (c *OrderCache) evictLRU() {
 		return
 	}
 
-	// Удаляем из orders
 	delete(c.orders, c.lruTail.key)
 
-	// Удаляем из nodeMap
 	delete(c.nodeMap, c.lruTail.key)
 
-	// Обновляем хвост
 	if c.lruTail.prev != nil {
 		c.lruTail.prev.next = nil
 		c.lruTail = c.lruTail.prev
 	} else {
-		// Это был последний элемент
 		c.lruHead = nil
 		c.lruTail = nil
 	}
